@@ -78,4 +78,4 @@ flutter run
 * **Maps & Location:** `geolocator`, `geocoding`.
 
 ---
-*Created for the Techhacking123 Team.*
+*Created for the DEEP Team.*
