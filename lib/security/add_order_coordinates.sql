@@ -1,0 +1,4 @@
+-- Add geospatial columns to orders table
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS address_gps TEXT;

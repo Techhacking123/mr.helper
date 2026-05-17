@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Successful</title>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0fdf4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            color: #14532d;
+            text-align: center;
+        }
+
+        .card {
+            background: white;
+            padding: 3rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .icon {
+            font-size: 4rem;
+            color: #22c55e;
+            margin-bottom: 1rem;
+        }
+
+        h1 {
+            margin: 0;
+            margin-bottom: 0.5rem;
+        }
+
+        p {
+            color: #64748b;
+            margin-top: 0;
+        }
+
+        .btn {
+            display: inline-block;
+            margin-top: 1.5rem;
+            padding: 0.75rem 1.5rem;
+            background-color: #22c55e;
+            color: white;
+            text-decoration: none;
+            border-radius: 0.5rem;
+            font-weight: bold;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .btn:hover {
+            background-color: #16a34a;
+        }
+
+        .btn-secondary {
+            display: block;
+            margin-top: 1rem;
+            color: #64748b;
+            text-decoration: underline;
+            font-size: 0.875rem;
+            cursor: pointer;
+            background: none;
+            border: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <div class="icon">✓</div>
+        <h1>Payment Successful!</h1>
+        <p id="successMessage">Your subscription has been activated.</p>
+        <p>You can now return to the Mr. Helper app.</p>
+        <button onclick="goBackToApp()" class="btn">Go Back to App</button>
+        <button onclick="closeWindow()" class="btn-secondary">Close Window</button>
+    </div>
+
+    <script>
+        // Check payment type from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const paymentType = urlParams.get('type');
+        
+        if (paymentType === 'fine') {
+            document.getElementById('successMessage').innerText = 'Your fines have been paid successfully.';
+        }
+
+        function goBackToApp() {
+            // Try to open the app using deep link
+            // Format: mrhelper://subscription/success
+            const deepLink = 'mrhelper://subscription/success';
+            const fallbackUrl = 'https://mrhelper.app'; // Fallback website if app not installed
+            
+            // Try opening the app
+            window.location.href = deepLink;
+            
+            // If app doesn't open within 2 seconds, try fallback or close
+            setTimeout(function() {
+                // Try to close the window
+                window.close();
+                
+                // If window doesn't close (opened directly, not as popup), show message
+                setTimeout(function() {
+                    document.querySelector('.card').innerHTML += '<p style="color: #22c55e; margin-top: 1rem; font-weight: bold;">Please return to the Mr. Helper app manually.</p>';
+                }, 500);
+            }, 2000);
+        }
+
+        function closeWindow() {
+            window.close();
+            // If window doesn't close, redirect to a blank page or show message
+            setTimeout(function() {
+                document.querySelector('.card').innerHTML += '<p style="color: #64748b; margin-top: 1rem;">You can close this tab manually.</p>';
+            }, 500);
+        }
+    </script>
+</body>
+
+</html>

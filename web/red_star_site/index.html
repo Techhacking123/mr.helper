@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MR Helper - Account Status</title>
+  <meta name="description" content="View your MR Helper provider account status and manage red star penalties.">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Loading State -->
+    <div id="loading" class="loading-screen">
+      <div class="spinner"></div>
+      <p>Loading your account...</p>
+    </div>
+
+    <!-- Error State -->
+    <div id="error-screen" class="error-screen hidden">
+      <div class="error-icon">⚠️</div>
+      <h2>Something went wrong</h2>
+      <p id="error-message">Unable to load account data.</p>
+      <button onclick="location.reload()" class="btn btn-primary">Try Again</button>
+    </div>
+
+    <!-- Main Content -->
+    <div id="main-content" class="hidden">
+      <!-- Header -->
+      <header class="header">
+        <img src="https://img.icons8.com/fluency/48/hammer.png" alt="MR Helper" class="logo">
+        <h1>MR Helper</h1>
+        <p class="subtitle">Provider Account Status</p>
+      </header>
+
+      <!-- Profile Card -->
+      <div id="profile-card" class="card profile-card">
+        <div class="avatar-wrapper">
+          <div id="avatar" class="avatar">
+            <span id="avatar-initial">?</span>
+          </div>
+          <div id="status-dot" class="status-dot blocked"></div>
+        </div>
+        <h2 id="provider-name" class="provider-name">Provider</h2>
+        <span id="service-name" class="service-badge">Service Provider</span>
+        <div id="account-status" class="account-badge blocked">
+          <span class="badge-icon">🚫</span>
+          <span id="status-text">BLOCKED</span>
+        </div>
+      </div>
+
+      <!-- Red Star Card -->
+      <div class="card star-card">
+        <h3 class="card-title">Red Star Penalties</h3>
+        <div id="stars-display" class="stars-display">
+          <div class="star-item">
+            <div id="star-1" class="star-circle"><span>★</span></div>
+            <span class="star-num">1</span>
+          </div>
+          <div class="star-item">
+            <div id="star-2" class="star-circle"><span>★</span></div>
+            <span class="star-num">2</span>
+          </div>
+          <div class="star-item">
+            <div id="star-3" class="star-circle"><span>★</span></div>
+            <span class="star-num">3</span>
+          </div>
+        </div>
+        <div id="star-message" class="star-message warning">
+          <span class="msg-icon">⚠️</span>
+          <span id="star-msg-text">Your account is blocked.</span>
+        </div>
+      </div>
+
+      <!-- Penalty History -->
+      <div class="card history-card">
+        <div class="card-header">
+          <h3 class="card-title">📋 Penalty History</h3>
+          <span id="history-count" class="count-badge">0</span>
+        </div>
+        <div id="history-list" class="history-list">
+          <div class="empty-state">
+            <span>✅</span>
+            <p>No penalties recorded</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Unblock Section -->
+      <div id="unblock-section" class="card unblock-card">
+        <div class="warning-box">
+          <span>ℹ️</span>
+          <p>Clicking "Unblock" will reset all your red stars to 0 and allow you to receive orders again. Future violations will result in penalties again.</p>
+        </div>
+        <button id="unblock-btn" class="btn btn-unblock" onclick="handleUnblock()">
+          <span class="btn-icon">🔓</span>
+          Unblock My Account
+        </button>
+      </div>
+
+      <!-- Success Message -->
+      <div id="success-msg" class="success-toast hidden">
+        <span>✅</span> Account unblocked! You can now receive orders.
+      </div>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

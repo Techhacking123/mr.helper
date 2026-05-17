@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Deletion Request - Mr Helper</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --danger: #dc2626;
+            --danger-hover: #b91c1c;
+            --bg-color: #f3f4f6;
+            --card-bg: #ffffff;
+            --text-main: #111827;
+            --text-muted: #6b7280;
+            --border-color: #d1d5db;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            background: var(--card-bg);
+            padding: 2.5rem;
+            border-radius: 12px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            max-width: 450px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .header h1 {
+            color: var(--danger);
+            margin: 0 0 0.5rem 0;
+            font-size: 1.5rem;
+        }
+
+        .header p {
+            color: var(--text-muted);
+            margin: 0;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            font-size: 0.9rem;10
+        }
+
+        input,
+        textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-family: inherit;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        input:focus,
+        textarea:focus {
+            outline: none;
+            border-color: var(--danger);
+            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 6px;
+            margin-bottom: 1.5rem;
+            display: none;
+            font-size: 0.9rem;
+        }
+
+        .alert.success {
+            background-color: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+            display: block;
+        }
+
+        .alert.error {
+            background-color: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+            display: block;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 0.875rem;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-danger {
+            background-color: var(--danger);
+        }
+
+        .btn-danger:hover {
+            background-color: var(--danger-hover);
+        }
+
+        .btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        /* Spinner animation */
+        .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <div class="header">
+            <h1>Request Account Deletion</h1>
+            <p>We're sorry to see you go. Please fill out this form to request the permanent deletion of your Mr Helper
+                account and data.</p>
+        </div>
+
+        <div id="alertBox" class="alert"></div>
+
+        <form id="deletionForm">
+            <div class="form-group">
+                <label for="phone">Phone Number (Registered)</label>
+                <input type="tel" id="phone" placeholder="+91 XXXXXXXXXX" required>
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email Address (Optional)</label>
+                <input type="email" id="email" placeholder="your@email.com">
+            </div>
+
+            <div class="form-group">
+                <label for="reason">Reason for leaving us</label>
+                <textarea id="reason"
+                    placeholder="Please tell us why you are deleting your account (helps us improve)..."
+                    required></textarea>
+            </div>
+
+            <button type="submit" id="submitBtn" class="btn btn-danger">
+                <span class="spinner" id="spinner"></span>
+                <span id="btnText">Submit Deletion Request</span>
+            </button>
+        </form>
+    </div>
+
+    <script>
+        // Supabase configuration retrieved from your project
+        const SUPABASE_URL = 'https://supabase-deep.phoenixsoftwaresolutions172.workers.dev';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ2cnBzcWRyYndmdmxsZWx5cWhmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxNTgxOTksImV4cCI6MjA4MDczNDE5OX0.ON2ioqbNJegKOWeGu_eqsgjNxQ6IdHCDuFRqjUfBYHk';
+
+        // Initialize Supabase Client
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        const form = document.getElementById('deletionForm');
+        const alertBox = document.getElementById('alertBox');
+        const submitBtn = document.getElementById('submitBtn');
+        const spinner = document.getElementById('spinner');
+        const btnText = document.getElementById('btnText');
+
+        function showAlert(message, type) {
+            alertBox.textContent = message;
+            alertBox.className = 'alert ' + type;
+        }
+
+        function setLoading(isLoading) {
+            submitBtn.disabled = isLoading;
+            if (isLoading) {
+                spinner.style.display = 'inline-block';
+                btnText.textContent = 'Submitting...';
+            } else {
+                spinner.style.display = 'none';
+                btnText.textContent = 'Submit Deletion Request';
+            }
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const phone = document.getElementById('phone').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const reason = document.getElementById('reason').value.trim();
+
+            if (!phone) {
+                showAlert('Please enter your registered phone number.', 'error');
+                return;
+            }
+
+            setLoading(true);
+
+            try {
+                // Insert the request into the delete_requests table in your database
+                // Note: Ensure your database has a table named 'delete_requests' with these columns
+                // and that its RLS policies allow INSERT for anon roles.
+                const { data, error } = await supabase
+                    .from('delete_requests')
+                    .insert([
+                        {
+                            phone: phone,
+                            email: email,
+                            reason: reason,
+                            status: 'pending',
+                            requested_at: new Date().toISOString()
+                        }
+                    ]);
+
+                if (error) {
+                    throw error;
+                }
+
+                // Success
+                form.reset();
+                showAlert('Your account deletion request has been submitted successfully. Our team will process it within 7-14 business days.', 'success');
+                form.style.display = 'none'; // Hide the form after success
+
+            } catch (err) {
+                console.error("Error submitting request:", err);
+                showAlert('Failed to submit request: ' + (err.message || 'Unknown error occurred'), 'error');
+            } finally {
+                setLoading(false);
+            }
+        });
+    </script>
+</body>
+
+</html>

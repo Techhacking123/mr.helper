@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "572991108072",
+    "project_id": "helper-ai-69690",
+    "storage_bucket": "helper-ai-69690.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:572991108072:android:d0d23708ab17616445ea5d",
+        "android_client_info": {
+          "package_name": "com.digital_engineering_enterprises_platform.mrhelper"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAaGg4uJJGANCZoFwfwYeMbYDVvl4oT8Jw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:572991108072:android:e9233285eaf0df2445ea5d",
+        "android_client_info": {
+          "package_name": "phoenix.com"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAaGg4uJJGANCZoFwfwYeMbYDVvl4oT8Jw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,12 @@
+{
+    "compilerOptions": {
+        "lib": [
+            "deno.window"
+        ],
+        "strict": true
+    },
+    "imports": {
+        "firebase-admin": "npm:firebase-admin@11.11.0",
+        "@types/firebase-admin": "npm:@types/firebase-admin@11.11.0"
+    }
+}
