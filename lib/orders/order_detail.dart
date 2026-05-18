@@ -2515,7 +2515,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
       // 2. Also trigger FCM Push Notification to wake up the app if it's in the background/closed
       try {
         await http.post(
-          Uri.parse('https://mrhelper-backend.onrender.com/sendCallNotification'),
+          Uri.parse('https://mrhelper-livekit-voice-call.onrender.com/sendCallNotification'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
             'calleeId': calleeId,

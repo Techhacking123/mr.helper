@@ -165,7 +165,7 @@ class CallSignalingService {
       // 2. Also trigger FCM Push Notification to ensure delivery if caller app is in background
       try {
         await http.post(
-          Uri.parse('https://mrhelper-backend.onrender.com/sendCallRejection'),
+          Uri.parse('https://mrhelper-livekit-voice-call.onrender.com/sendCallRejection'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
             'callerId': callerId,
@@ -193,7 +193,7 @@ class CallSignalingService {
       );
       
       calleeChannel.subscribe((status, error) async {
-        if (status == ChannelStatus.subscribed) {
+        if (status == RealtimeSubscribeStatus.subscribed) {
           await calleeChannel.sendBroadcastMessage(
             event: 'call_cancelled',
             payload: {'order_id': orderId},
@@ -209,7 +209,7 @@ class CallSignalingService {
       // Trigger FCM cancellation
       try {
         await http.post(
-          Uri.parse('https://mrhelper-backend.onrender.com/sendCallCancellation'),
+          Uri.parse('https://mrhelper-livekit-voice-call.onrender.com/sendCallCancellation'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
             'calleeId': calleeId,
