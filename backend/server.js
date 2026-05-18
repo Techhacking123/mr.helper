@@ -3,12 +3,31 @@ const cors = require('cors');
 const crypto = require('crypto');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
+const { RoomServiceClient } = require('livekit-server-sdk');
+const admin = require('firebase-admin');
 require('dotenv').config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// LiveKit Configuration
+const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || 'your_livekit_api_key';
+const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || 'your_livekit_api_secret';
+const LIVEKIT_URL = process.env.LIVEKIT_URL || 'http://localhost:7880';
+
+// LiveKit Room Service
+let roomService = null;
+try {
+  roomService = new RoomServiceClient(
+    LIVEKIT_URL,
+    LIVEKIT_API_KEY,
+    LIVEKIT_API_SECRET,
+  );
+} catch (error) {
+  console.log('LiveKit room service not initialized:', error);
+}
 
 // Supabase Config
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://supabase-deep.phoenixsoftwaresolutions172.workers.dev';
@@ -17,6 +36,32 @@ const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6Ik
 // Google Play Config
 const GOOGLE_PLAY_PACKAGE_NAME = process.env.GOOGLE_PLAY_PACKAGE_NAME || 'com.mrhelper.app';
 const GOOGLE_SERVICE_ACCOUNT_KEY_PATH = process.env.GOOGLE_SERVICE_ACCOUNT_KEY || 'google-service-account.json';
+
+// Firebase Admin SDK Initialization
+try {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    // Production: Base64-encoded service account JSON from env var
+    const serviceAccount = JSON.parse(
+      Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT, 'base64').toString('utf8')
+    );
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+    console.log('Firebase Admin SDK initialized from env var');
+  } else if (fs.existsSync('firebase-service-account.json')) {
+    // Local dev: service account JSON file
+    const serviceAccount = JSON.parse(fs.readFileSync('firebase-service-account.json', 'utf8'));
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+    console.log('Firebase Admin SDK initialized from local file');
+  } else {
+    console.warn('⚠️ Firebase Admin SDK NOT initialized: No service account found.');
+    console.warn('   Set FIREBASE_SERVICE_ACCOUNT env var (base64) or place firebase-service-account.json locally.');
+  }
+} catch (firebaseError) {
+  console.error('Firebase Admin SDK initialization error:', firebaseError.message);
+}
 
 /**
  * Get an OAuth2 access token using Google service account credentials.
@@ -287,10 +332,296 @@ app.post('/webhook/google-play', (req, res) => {
 
 // 3. Health Check
 app.get('/health', (req, res) => {
-    res.json({ status: 'ok', service: 'mr-helper-backend', billing: 'google_play' });
+  res.json({ status: 'ok', service: 'mr-helper-backend', billing: 'google_play' });
+});
+
+// 4. Get LiveKit Token (for voice calling)
+app.post('/getToken', async (req, res) => {
+  try {
+    const { roomName, userName } = req.body;
+
+    if (!roomName || !userName) {
+      return res.status(400).json({ 
+        status: 'error', 
+        message: 'Missing required fields: roomName and userName' 
+      });
+    }
+
+    console.log(`Generating LiveKit token for room: ${roomName}, user: ${userName}`);
+
+    // Generate a unique identity for the user in the room
+    const identity = `${userName}_${Math.random().toString(36).substring(7)}`;
+
+    // Use AccessToken from livekit-server-sdk for proper token generation
+    const { AccessToken } = require('livekit-server-sdk');
+    
+    const token = new AccessToken(
+      LIVEKIT_API_KEY,
+      LIVEKIT_API_SECRET,
+      {
+        identity: identity,
+        name: userName,
+      }
+    );
+
+    // Add grants for the room
+    token.addGrant({
+      roomJoin: true,
+      room: roomName,
+      canPublish: true,
+      canSubscribe: true,
+      canPublishAudio: true,
+      canPublishVideo: false, // Audio only for voice calls
+    });
+
+    // toJwt() returns a Promise in livekit-server-sdk v2.x — must await
+    const jwtToken = await token.toJwt();
+
+    console.log(`Token generated for identity: ${identity}`);
+
+    res.json({ 
+      status: 'success', 
+      token: jwtToken,
+      roomName: roomName,
+      identity: identity,
+      message: 'Token generated successfully' 
+    });
+  } catch (error) {
+    console.error('Error generating LiveKit token:', error);
+    res.status(500).json({ 
+      status: 'error', 
+      message: error.message 
+    });
+  }
+});
+
+// =========================================================
+// VOICE CALL NOTIFICATION ENDPOINT
+// Sends a DATA-ONLY FCM message so the background handler
+// always fires and can show the native CallKit incoming call screen.
+// =========================================================
+app.post('/sendCallNotification', async (req, res) => {
+  try {
+    const { calleeId, callerName, orderId, callerId } = req.body;
+
+    if (!calleeId) {
+      return res.status(400).json({ error: 'calleeId is required' });
+    }
+
+    // Check if Firebase Admin is initialized
+    if (!admin.apps.length) {
+      console.error('Firebase Admin SDK not initialized');
+      return res.status(500).json({ error: 'Firebase Admin not initialized' });
+    }
+
+    // First try the new multi-device fcm_tokens table
+    let fcmTokens = [];
+    const fcmTokensResponse = await fetch(`${SUPABASE_URL}/rest/v1/fcm_tokens?user_id=eq.${calleeId}&select=fcm_token`, {
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    const fcmTokensData = await fcmTokensResponse.json();
+    if (fcmTokensData && fcmTokensData.length > 0) {
+      fcmTokens = fcmTokensData.map(t => t.fcm_token);
+    }
+
+    // Look up callee's FCM token from legacy users table
+    const supabaseResponse = await fetch(`${SUPABASE_URL}/rest/v1/users?id=eq.${calleeId}&select=fcm_token,name`, {
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const users = await supabaseResponse.json();
+    const calleeName = (users && users.length > 0) ? users[0].name : 'User';
+
+    if (users && users.length > 0 && users[0].fcm_token) {
+      if (!fcmTokens.includes(users[0].fcm_token)) {
+        fcmTokens.push(users[0].fcm_token);
+      }
+    }
+
+    if (fcmTokens.length === 0) {
+      console.error('FCM token not found for user:', calleeId);
+      return res.status(404).json({ error: 'FCM token not found for callee' });
+    }
+
+    console.log(`Sending call notification to ${calleeName} (tokens: ${fcmTokens.length})`);
+
+    // Send a DATA-ONLY FCM message (NO 'notification' field)
+    // This ensures the background handler ALWAYS fires on Android.
+    const message = {
+      tokens: fcmTokens,
+      data: {
+        screen: 'voice_call',
+        order_id: orderId || '',
+        caller_name: callerName || 'Someone',
+        caller_id: callerId || '',
+        title: 'Incoming Voice Call',
+        body: `${callerName || 'Someone'} is calling you`,
+      },
+      android: {
+        priority: 'high',
+        ttl: 30000,
+      },
+    };
+
+    const fcmResponse = await admin.messaging().sendMulticast(message);
+    console.log('✅ FCM call notification sent:', fcmResponse);
+
+    res.json({ success: true, messageId: fcmResponse });
+  } catch (error) {
+    console.error('❌ Error sending call notification:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint to send call rejection back to the caller
+app.post('/sendCallRejection', async (req, res) => {
+  try {
+    const { callerId, orderId } = req.body;
+
+    if (!callerId) {
+      return res.status(400).json({ error: 'callerId is required' });
+    }
+
+    if (!admin.apps.length) {
+      return res.status(500).json({ error: 'Firebase Admin not initialized' });
+    }
+
+    // First try the new multi-device fcm_tokens table
+    let fcmTokens = [];
+    const fcmTokensResponse = await fetch(`${SUPABASE_URL}/rest/v1/fcm_tokens?user_id=eq.${callerId}&select=fcm_token`, {
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    const fcmTokensData = await fcmTokensResponse.json();
+    if (fcmTokensData && fcmTokensData.length > 0) {
+      fcmTokens = fcmTokensData.map(t => t.fcm_token);
+    }
+
+    // Look up caller's FCM token from legacy users table
+    const supabaseResponse = await fetch(`${SUPABASE_URL}/rest/v1/users?id=eq.${callerId}&select=fcm_token`, {
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const users = await supabaseResponse.json();
+    if (users && users.length > 0 && users[0].fcm_token) {
+      if (!fcmTokens.includes(users[0].fcm_token)) {
+        fcmTokens.push(users[0].fcm_token);
+      }
+    }
+
+    if (fcmTokens.length === 0) {
+      return res.status(404).json({ error: 'FCM token not found for caller' });
+    }
+
+    const message = {
+      tokens: fcmTokens,
+      data: {
+        screen: 'call_rejected',
+        order_id: orderId || '',
+        title: 'Call Rejected',
+        body: 'The recipient declined your call.',
+      },
+      android: {
+        priority: 'high',
+      },
+    };
+
+    const fcmResponse = await admin.messaging().sendMulticast(message);
+    console.log('✅ Call rejection sent:', fcmResponse);
+    res.json({ success: true, messageId: fcmResponse });
+  } catch (error) {
+    console.error('❌ Error sending call rejection:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint to send call cancellation (caller hangs up before pickup)
+app.post('/sendCallCancellation', async (req, res) => {
+  try {
+    const { calleeId, orderId } = req.body;
+
+    if (!calleeId) {
+      return res.status(400).json({ error: 'calleeId is required' });
+    }
+
+    if (!admin.apps.length) {
+      return res.status(500).json({ error: 'Firebase Admin not initialized' });
+    }
+
+    // First try the new multi-device fcm_tokens table
+    let fcmTokens = [];
+    const fcmTokensResponse = await fetch(`${SUPABASE_URL}/rest/v1/fcm_tokens?user_id=eq.${calleeId}&select=fcm_token`, {
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    const fcmTokensData = await fcmTokensResponse.json();
+    if (fcmTokensData && fcmTokensData.length > 0) {
+      fcmTokens = fcmTokensData.map(t => t.fcm_token);
+    }
+
+    // Look up callee's FCM token from legacy users table
+    const supabaseResponse = await fetch(`${SUPABASE_URL}/rest/v1/users?id=eq.${calleeId}&select=fcm_token`, {
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const users = await supabaseResponse.json();
+    if (users && users.length > 0 && users[0].fcm_token) {
+      if (!fcmTokens.includes(users[0].fcm_token)) {
+        fcmTokens.push(users[0].fcm_token);
+      }
+    }
+
+    if (fcmTokens.length === 0) {
+      return res.status(404).json({ error: 'FCM token not found for callee' });
+    }
+
+    const message = {
+      tokens: fcmTokens,
+      data: {
+        screen: 'call_cancelled',
+        order_id: orderId || '',
+        title: 'Call Cancelled',
+        body: 'The caller hung up.',
+      },
+      android: {
+        priority: 'high',
+      },
+    };
+
+    const fcmResponse = await admin.messaging().sendMulticast(message);
+    console.log('✅ Call cancellation sent:', fcmResponse);
+    res.json({ success: true, messageId: fcmResponse });
+  } catch (error) {
+    console.error('❌ Error sending call cancellation:', error.message);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    console.log(`LiveKit token endpoint available at: POST /getToken`);
+    console.log(`Call notification endpoint at: POST /sendCallNotification`);
 });
