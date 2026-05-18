@@ -28,6 +28,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import '../utils/error_handler.dart'; // Error handling utility
 import '../marketplace/products_marketplace_page.dart'; // Products Marketplace
+import '../call/call_signaling_service.dart';
 
 class UserHome extends StatefulWidget {
   final Map<String, dynamic>? preloadedUserData;
@@ -287,6 +288,11 @@ class _UserHomeTabState extends State<UserHomeTab>
   void initState() {
     super.initState();
     _initializeData();
+
+    // Start listening for real-time calls
+    try {
+      CallSignalingService.instance.startListening();
+    } catch (_) {}
 
     // Initialize ads carousel
     _adsPageController = PageController(viewportFraction: 0.92);

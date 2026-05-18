@@ -8,6 +8,10 @@ import '../auth/session_manager.dart';
 import '../main.dart'; // For navigatorKey
 import '../subscription/subscription_page.dart'; // For deep linking
 import '../orders/order_detail.dart'; // For deep linking
+import '../call/voice_call_screen.dart'; // For voice call deep linking
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'package:flutter_callkit_incoming/entities/entities.dart';
+import '../call/livekit_service.dart'; // For call notification via backend
 import 'dart:developer' as developer;
 import 'dart:convert';
 import 'dart:math';
@@ -19,6 +23,18 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   developer.log('Background message received: ${message.messageId}');
   developer.log('Message notification: ${message.notification?.title}');
+
+  // Handle background CallKit
+  if (message.data['screen'] == 'voice_call') {
+    await FCMService.showCallkitIncoming(message);
+    return;
+  }
+  
+  if (message.data['screen'] == 'call_rejected' || message.data['screen'] == 'call_cancelled') {
+    developer.log('Call cancelled or rejected in background, dismissing CallKit');
+    await FlutterCallkitIncoming.endAllCalls();
+    return;
+  }
 
   // Show manual notification for background messages to ensure they appear
   if (message.notification == null) {
@@ -153,6 +169,39 @@ class FCMService {
 
     RemoteNotification? notification = message.notification;
 
+    // Intercept voice call notifications in foreground
+    if (message.data['screen'] == 'voice_call') {
+      await showCallkitIncoming(message);
+      return; // Stop here, don't show the generic local notification
+    }
+
+    if (message.data['screen'] == 'call_rejected' || message.data['screen'] == 'call_cancelled') {
+      // If CallKit is ringing in foreground, dismiss it
+      await FlutterCallkitIncoming.endAllCalls();
+      
+      final context = navigatorKey.currentContext;
+      if (context != null) {
+        // Just pop the current screen (which should be the VoiceCallScreen waiting for pickup)
+        if (Navigator.of(context).canPop()) {
+           Navigator.of(context).pop();
+        }
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: Text(message.data['screen'] == 'call_cancelled' ? 'Call Cancelled' : 'Call Rejected'),
+            content: Text(message.data['screen'] == 'call_cancelled' ? 'The caller hung up.' : 'The recipient declined your call.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
     // Show local notification explicitly
     if (notification != null) {
       developer.log('Attempting to show local notification...');
@@ -222,6 +271,15 @@ class FCMService {
           }
           break;
 
+        case 'voice_call':
+          final orderId = data['order_id'];
+          final callerName = data['caller_name'] ?? 'Caller';
+          if (orderId != null) {
+            developer.log('Navigating to Voice Call: $orderId');
+            _navigateToVoiceCall(context, orderId, callerName);
+          }
+          break;
+
         default:
           developer.log('Unknown screen type: $screen');
       }
@@ -271,6 +329,75 @@ class FCMService {
     } catch (e) {
       developer.log('Error navigating to order detail: $e');
     }
+  }
+
+  /// Navigate to voice call screen
+  static void _navigateToVoiceCall(BuildContext context, String orderId, String callerName) {
+    try {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => VoiceCallScreen(
+            orderId: orderId,
+            callerName: callerName,
+            calleeName: 'You', // Since we are receiving the call
+            isCaller: false, // We are the callee
+          ),
+        ),
+      );
+      developer.log('✅ Navigated to Voice Call: $orderId');
+    } catch (e) {
+      developer.log('Error navigating to voice call: $e');
+    }
+  }
+
+  /// Show CallKit incoming call screen
+  static Future<void> showCallkitIncoming(RemoteMessage message) async {
+    final orderId = message.data['order_id'] ?? 'unknown';
+    final callerName = message.data['caller_name'] ?? 'Someone';
+    final callerId = message.data['caller_id'];
+    
+    CallKitParams callKitParams = CallKitParams(
+      id: orderId, // UUID
+      nameCaller: callerName,
+      appName: 'MrHelper',
+      avatar: 'https://i.pravatar.cc/100', // optional
+      handle: 'Incoming Call',
+      type: 0, // audio call
+      textAccept: 'Accept',
+      textDecline: 'Decline',
+      missedCallNotification: const NotificationParams(
+        showNotification: true,
+        isShowCallback: false,
+        subtitle: 'Missed call',
+      ),
+      duration: 30000, // 30 seconds
+      extra: <String, dynamic>{'order_id': orderId, 'caller_name': callerName, 'caller_id': callerId},
+      android: const AndroidParams(
+        isCustomNotification: true,
+        isShowLogo: false,
+        ringtonePath: 'system_ringtone_default',
+        backgroundColor: '#0955fa',
+        actionColor: '#4CAF50',
+        textColor: '#ffffff',
+      ),
+      ios: const IOSParams(
+        iconName: 'CallKitLogo',
+        handleType: '',
+        supportsVideo: false,
+        maximumCallGroups: 2,
+        maximumCallsPerCallGroup: 1,
+        audioSessionMode: 'default',
+        audioSessionActive: true,
+        audioSessionPreferredSampleRate: 44100.0,
+        audioSessionPreferredIOBufferDuration: 0.005,
+        supportsDTMF: true,
+        supportsHolding: true,
+        supportsGrouping: false,
+        supportsUngrouping: false,
+        ringtonePath: 'system_ringtone_default',
+      ),
+    );
+    await FlutterCallkitIncoming.showCallkitIncoming(callKitParams);
   }
 
   /// Get current FCM token
@@ -575,6 +702,8 @@ class FCMService {
     required String message,
     String? screen,
     String? orderId,
+    String? callerName,
+    String? callerId,
   }) async {
     try {
       developer.log("📤 Sending push notification to user: $userId");
@@ -586,7 +715,12 @@ class FCMService {
         'message': message,
         'order_id': orderId,
         'is_read': false,
-        'data': {'screen': screen, 'order_id': orderId},
+        'data': {
+          'screen': screen, 
+          'order_id': orderId, 
+          'caller_name': callerName,
+          'caller_id': callerId
+        },
       });
 
       developer.log("✅ Notification inserted for user: $userId");
@@ -628,6 +762,8 @@ class FCMService {
     required String message,
     String? screen,
     String? orderId,
+    String? callerName,
+    String? callerId,
   }) async {
     for (final userId in userIds) {
       await sendPushNotificationToUser(
@@ -636,6 +772,8 @@ class FCMService {
         message: message,
         screen: screen,
         orderId: orderId,
+        callerName: callerName,
+        callerId: callerId,
       );
     }
   }

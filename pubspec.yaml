@@ -62,6 +62,10 @@ dependencies:
   intl: ^0.20.2
   crypto: ^3.0.7
   in_app_purchase: ^3.2.0
+  livekit_client: ^2.0.1
+  dio: ^5.4.0
+  permission_handler: ^11.0.1
+  flutter_callkit_incoming: ^3.0.0
 
 dev_dependencies:
   flutter_test:

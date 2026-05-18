@@ -15,6 +15,7 @@ import '../admin/admin_dashboard.dart';
 import '../supabase_config.dart';
 import '../firebase/fcm_service.dart';
 import '../screens/get_started_page.dart';
+import '../call/call_signaling_service.dart';
 
 class AnimatedSplashScreen extends StatefulWidget {
   const AnimatedSplashScreen({super.key});
@@ -490,6 +491,11 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
       // Initialize FCM in background
       try {
         FCMService.saveTokenForCurrentUser();
+      } catch (_) {}
+
+      // Start listening for real-time calls
+      try {
+        CallSignalingService.instance.startListening();
       } catch (_) {}
 
       if (username == 'adime') {

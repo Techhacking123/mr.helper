@@ -8,6 +8,7 @@ import 'package:firebase_core/firebase_core.dart';
 import '../firebase/fcm_service.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../widgets/animated_splash_screen.dart';
+import '../call/call_signaling_service.dart';
 import '../services/theme_service.dart';
 import '../services/google_billing_service.dart';
 
@@ -25,6 +26,9 @@ Future<void> main() async {
 
   // Initialize FCM
   await FCMService.initialize();
+
+  // Initialize Call Signaling Service Listeners
+  CallSignalingService.instance.setupCallKitListeners();
 
   // Initialize Google Mobile Ads
   await MobileAds.instance.initialize();

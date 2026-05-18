@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:math';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import '../call/call_launcher.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -8,10 +10,14 @@ import 'user_offers.dart';
 import 'order_chat_page.dart';
 import 'package:intl/intl.dart';
 
+import '../call/livekit_service.dart';
+import '../call/voice_call_screen.dart';
+import '../call/call_signaling_service.dart';
 import '../supabase_config.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'order_timer_manager.dart';
 import 'provider_review_dialog.dart';
+import '../auth/session_manager.dart';
 
 import '../widgets/deadline_timer.dart';
 import '../services/order_expiry_service.dart';
@@ -2376,15 +2382,14 @@ class _OrderDetailPageState extends State<OrderDetailPage>
       ),
       child: Row(
         children: [
-          // Call Button
+          // Voice Call Button
           if (_getPhoneNumber(isProvider) != null)
             Expanded(
               child: _buildCommButton(
-                icon: Icons.call_rounded,
-                label: 'Call',
+                icon: Icons.phone_android,
+                label: 'Voice Call',
                 color: _AppTheme.success,
-                onPressed: () =>
-                    CallLauncher.makeCall(_getPhoneNumber(isProvider)!),
+                onPressed: () => _startVoiceCall(isProvider),
               ),
             ),
           if (_getPhoneNumber(isProvider) != null)
@@ -2454,6 +2459,108 @@ class _OrderDetailPageState extends State<OrderDetailPage>
         ),
       ),
     );
+  }
+
+  /// Start a LiveKit voice call
+  Future<void> _startVoiceCall(bool isProvider) async {
+    final orderId = _order['id'];
+    if (orderId == null) {
+      _showErrorSnackBar('Unable to start voice call');
+      return;
+    }
+
+    // Get current user ID and name
+    final isLoggedIn = await SessionManager.isLoggedIn();
+    if (!isLoggedIn) {
+      _showErrorSnackBar('Please log in to make voice calls');
+      return;
+    }
+    final currentUsername = await SessionManager.getUsername();
+    final currentUserId = await SessionManager.getUserId();
+
+    // Get callee name based on user role
+    String calleeName;
+    String callerName;
+    bool isCaller;
+
+    if (isProvider) {
+      // Provider is calling the user/buyer
+      final buyer = _order['buyer'];
+      calleeName = buyer?['name'] ?? 'Customer';
+      callerName = currentUsername ?? currentUserId ?? 'Provider';
+      isCaller = false; // Provider is the callee in this context
+    } else {
+      // User is calling the provider
+      final provider = _order['provider'];
+      if (provider == null) {
+        _showErrorSnackBar('Provider information not available');
+        return;
+      }
+      calleeName = provider['name'] ?? 'Provider';
+      callerName = currentUsername ?? currentUserId ?? 'Customer';
+      isCaller = true; // User is the caller
+    }
+
+    // Send instant call signal via Supabase Realtime Broadcast
+    final String? calleeId = isProvider ? _order['user_id'] : _order['provider_id'];
+    if (calleeId != null && currentUserId != null) {
+      // 1. Try real-time broadcast for fast delivery if app is open
+      CallSignalingService.instance.sendCallSignal(
+        calleeId: calleeId,
+        callerName: callerName,
+        orderId: orderId,
+        callerId: currentUserId,
+      );
+
+      // 2. Also trigger FCM Push Notification to wake up the app if it's in the background/closed
+      try {
+        await http.post(
+          Uri.parse('https://mrhelper-backend.onrender.com/sendCallNotification'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'calleeId': calleeId,
+            'callerName': callerName,
+            'orderId': orderId,
+            'callerId': currentUserId,
+          }),
+        );
+      } catch (e) {
+        debugPrint('Error triggering FCM call notification: $e');
+      }
+    }
+
+    // Show loading indicator
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Connecting to voice call...'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+
+    // Navigate to voice call screen
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => VoiceCallScreen(
+          orderId: orderId,
+          callerName: callerName,
+          calleeName: calleeName,
+          isCaller: isCaller,
+          calleeId: calleeId,
+        ),
+      ),
+    );
+  }
+
+  /// Get callee name for voice call
+  String _getCalleeName(bool isProvider) {
+    if (isProvider) {
+      final buyer = _order['buyer'];
+      return buyer?['name'] ?? 'Customer';
+    } else {
+      final provider = _order['provider'];
+      return provider?['name'] ?? 'Provider';
+    }
   }
 
   Widget _buildLocationSection(bool isProvider) {

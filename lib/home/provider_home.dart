@@ -18,6 +18,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../orders/order_timer_manager.dart';
 import '../services/otp_verification_service.dart';
 import '../marketplace/product_orders_page.dart'; // Product Orders
+import '../call/call_signaling_service.dart';
 
 import 'package:geocoding/geocoding.dart';
 
@@ -40,6 +41,11 @@ class _ProviderHomeState extends State<ProviderHome>
     super.initState();
     _loadUser();
     _checkNewRequests();
+
+    // Start listening for real-time calls
+    try {
+      CallSignalingService.instance.startListening();
+    } catch (_) {}
 
     // Auto-check for expired orders and red stars on startup
     OrderTimerManager.runGlobalExpiryCheck();
